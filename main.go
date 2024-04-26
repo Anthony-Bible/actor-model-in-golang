@@ -14,6 +14,7 @@ type Actor struct {
 type Message struct {
 	body string 
 	detail string
+	From string
 }
 
 // MessageOrganizer is a struct that holds the actors and also takes care of the message passing
@@ -63,20 +64,20 @@ func (actor *Actor) CustomerActorLoop(ch <-chan Message) {
 				fmt.Println("Invalid order, please specify pie or icecream")
 			}
 			if msg.detail == "pie"  || msg.detail == "both"{
-				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "order", detail: "pie"})
+				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "order", detail: "pie", From: actor.Name})
 		    }
 			if msg.detail == "icecream" || msg.detail == "both"{
-				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "order", detail: "icecream"})
+				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "order", detail: "icecream", From: actor.Name})
 			}
 		case "put on table":
 			if msg.detail == "pie"{
-				fmt.Println("Pie is on the table")
+				fmt.Println("Pie is on the table for customer: ", actor.Name)
 			}
 			if msg.detail == "icecream"{
-				fmt.Println("Icecream is on the table")
+				fmt.Println("Icecream is on the table for customer: ", actor.Name)
 			}
 		case "no pie left", "no icecream left":
-			fmt.Println(msg.body)
+			fmt.Println(actor.Name, msg.body)
 		default:
 			fmt.Println("Invalid message")
 
@@ -89,17 +90,18 @@ func (actor *Actor) WaiterActorLoop(ch <-chan Message) {
 		switch msg.body{
 		case "order":
             if msg.detail == "pie"{
-				actor.Organizer.SendMessage(actor.Name, "PieCaseActor", Message{body: "get slice"})
+				actor.Organizer.SendMessage(actor.Name, "PieCaseActor", Message{body: "get slice", From: msg.From})
 			}
 			if msg.detail == "icecream"{
-				actor.Organizer.SendMessage(actor.Name, "IceCreamActor", Message{body: "get scoop"})
+				// for a quick and dirty solution, we will just copy the msg.from to the icecream actor. Since we're doing this so late we can't optimize the codde to make it cleaner
+				actor.Organizer.SendMessage(actor.Name, "IceCreamActor", Message{body: "get scoop", From: msg.From})
 			}
 		case "Add To Order":
 			if msg.detail == "pie"{
-				fmt.Println("Adding pie to order")
+				fmt.Println("Adding pie to order to customer: ", msg.From)
 			}
 			if msg.detail == "icecream"{
-				fmt.Println("Adding icecream to order")
+				fmt.Println("Adding icecream to order to customer: ", msg.From)
 			}
 		case "no pie left":
 			fmt.Println("No pie left")
@@ -112,11 +114,11 @@ func (actor *Actor) PieCaseActorLoop(ch <-chan Message) {
 		switch msg.body{
 		case "get slice":
 			if len(actor.State.([]string)) > 0 {
-				actor.Organizer.SendMessage(actor.Name, "CustomerActor", Message{body: "put on table", detail: "pie"})
+				actor.Organizer.SendMessage(actor.Name, msg.From, Message{body: "put on table", detail: "pie"})
 				actor.State = actor.State.([]string)[1:]
-				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "Add To Order", detail: "pie"})
+				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "Add To Order", detail: "pie", From: msg.From})
 			} else {
-				actor.Organizer.SendMessage(actor.Name, "CustomerActor", Message{body: "no pie left"})
+				actor.Organizer.SendMessage(actor.Name, msg.From, Message{body: "no pie left"})
 			}
 		default:
 			fmt.Println("Invalid message")
@@ -130,11 +132,11 @@ func (actor *Actor) IceCreamActorLoop(ch <-chan Message) {
 		switch msg.body{
 		case "get scoop":
 			if len(actor.State.([]string)) > 0 {
-				actor.Organizer.SendMessage(actor.Name, "CustomerActor", Message{body: "put on table", detail: "icecream"})
+				actor.Organizer.SendMessage(actor.Name, msg.From, Message{body: "put on table", detail: "icecream"})
 				actor.State = actor.State.([]string)[1:]
-				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "Add To Order", detail: "icecream"})
+				actor.Organizer.SendMessage(actor.Name, "WaiterActor", Message{body: "Add To Order", detail: "icecream", From: msg.From})
 			} else {
-				actor.Organizer.SendMessage(actor.Name, "CustomerActor", Message{body: "no icecream left"})
+				actor.Organizer.SendMessage(actor.Name, msg.From, Message{body: "no icecream left"})
 			}
 		default:
 			fmt.Println("Invalid message")
@@ -180,6 +182,9 @@ func main() {
 	CustomerActor.StartCustomerActor()
 	messageOrganizer.RegisterActor(CustomerActor)
 
+	CustomerActor2 := NewActor("CustomerActor2",nil,messageOrganizer) 
+	CustomerActor2.StartCustomerActor()
+	messageOrganizer.RegisterActor(CustomerActor2)
 
 	// Waiteractor
 	WaiterActor := NewActor("WaiterActor",nil,messageOrganizer)
@@ -198,11 +203,11 @@ func main() {
 
 
 	CustomerActor.Ch <- Message{body: "order", detail: "pie"}
-	CustomerActor.Ch <- Message{body: "order", detail: "icecream"}
+	CustomerActor2.Ch <- Message{body: "order", detail: "icecream"}
 
+	CustomerActor2.Ch <- Message{body: "order", detail: "both"}
 	CustomerActor.Ch <- Message{body: "order", detail: "both"}
-	CustomerActor.Ch <- Message{body: "order", detail: "both"}
-	CustomerActor.Ch <- Message{body: "order", detail: "both"}
+	CustomerActor2.Ch <- Message{body: "order", detail: "both"}
 	CustomerActor.Ch <- Message{body: "order", detail: "both"}
 
 }
